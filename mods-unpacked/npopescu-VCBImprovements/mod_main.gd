@@ -9,9 +9,12 @@ extends Node
 # Improvement #1 — "Drag Override": while simulating, a click-drag across separate latches applies
 # the mouse override (toggle, or press-and-hold, per the current Mouse Interaction Mode) to EACH
 # latch the pointer sweeps over — so a whole row of switches flips in one drag. It's off by default;
-# a checkbox placed under the Toggle/Press buttons in the simulation panel turns it on. That panel
-# is sim-only, so the checkbox can only be changed while simulating and keeps its state when you
-# stop and restart the sim (its node isn't rebuilt). See scripts/drag_override.gd.
+# a checkbox placed under the Toggle/Press buttons in the simulation panel turns it on. A second
+# checkbox (shown only while Drag Override is on) adds a "Copy first state" sub-option: instead of
+# toggling each swept latch, it copies the state of the first switch you flip onto every latch the
+# drag reaches. That panel is sim-only, so the checkboxes can only be changed while simulating and
+# keep their state when you stop and restart the sim (their nodes aren't rebuilt). See
+# scripts/drag_override.gd.
 
 const MOD_DIR := "npopescu-VCBImprovements"
 const MOD_ROOT := "res://mods-unpacked/npopescu-VCBImprovements"
@@ -80,6 +83,23 @@ func _build(main: Node, simulator: Node, sim_bar: Node) -> void :
 				sim_vbox.move_child(cb, sim_bar.get_index() + 1)
 				if driver != null and driver.has_method("set_checkbox"):
 					driver.set_checkbox(cb)
+
+				# Sub-option, shown only while Drag Override is on (the driver toggles its
+				# visibility): instead of toggling each swept latch, copy the state of the FIRST
+				# switch you flip onto every latch the drag reaches (already-matching latches are
+				# left alone). Placed just beneath the Drag Override checkbox.
+				var cb2 = scn.instance()
+				cb2.name = "BtnDragOverrideCopy"
+				cb2.title = "Copy first state"
+				if cb2.has_node("Label"):
+					cb2.get_node("Label").text = "Copy first state"
+				cb2.hint_tooltip = "With Drag Override on (Toggle mode): copy the state of the first switch you flip onto every switch you drag across — drag from empty onto an OFF switch to turn it (and the rest) ON, or onto an ON switch to turn them all OFF. Switches already in that state are left alone."
+				cb2.visible = false
+				sim_vbox.add_child(cb2)
+				sim_vbox.move_child(cb2, cb.get_index() + 1)
+				if driver != null and driver.has_method("set_copy_checkbox"):
+					driver.set_copy_checkbox(cb2)
+
 
 	if driver != null and driver.has_method("set_simulator"):
 		driver.set_simulator(simulator)
