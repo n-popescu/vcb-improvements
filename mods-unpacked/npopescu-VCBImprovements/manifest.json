@@ -1,9 +1,9 @@
 {
 	"name": "VCBImprovements",
 	"namespace": "npopescu",
-	"version_number": "1.0.0",
+	"version_number": "1.1.0",
 	"website_url": "https://github.com/n-popescu/vcb-improvements",
-	"description": "A collection of small quality-of-life improvements for Virtual Circuit Board. #1 - Drag Override: while simulating, click-drag across separate latches to toggle (or press-and-hold) each one the pointer sweeps over, so a whole row of switches flips in one drag. A checkbox under the Toggle/Press buttons in the simulation panel turns it on (sim-only; keeps its state across sim restarts). Pure GDScript, loads at runtime, never replaces vcb.pck; coexists with other mods.",
+	"description": "A collection of small quality-of-life improvements for Virtual Circuit Board. #1 - Drag Override: while simulating, click-drag across separate latches to toggle (or press-and-hold) each one the pointer sweeps over, so a whole row of switches flips in one drag. A checkbox under the Toggle/Press buttons in the simulation panel turns it on (sim-only; keeps its state across sim restarts). Multiplayer-compatible: the swept overrides are mirrored to the other player so both boards stay in lockstep. Pure GDScript, loads at runtime, never replaces vcb.pck; coexists with other mods.",
 	"dependencies": [],
 	"extra": {
 		"godot": {

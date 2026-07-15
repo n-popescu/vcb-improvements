@@ -34,9 +34,19 @@ works with any latch layout — the switches don't need to be connected.
 across your switches. The checkbox is **only available while simulating**, and it **keeps its
 state** when you stop and restart the simulation.
 
-> **Multiplayer note:** the drag is applied **locally**. In a multiplayer session the peer only
-> receives the first click (the MP mod mirrors press/release, not pointer motion), so a swept row
-> can differ between the two boards until a re-sync. Intended for single-player use.
+> **Multiplayer:** this is fully synced. In a [VCB Multiplayer](https://github.com/n-popescu/vcb-multiplayer)
+> session the swept overrides are mirrored to the other player (carrying your interaction mode), so
+> both boards stay in lockstep — just like a normal in-sim click. Both players need this mod
+> installed; with the multiplayer mod absent it simply works locally.
+
+## Compatibility with the Multiplayer mod
+
+Every improvement in this mod is built to be **compatible with the
+[VCB Multiplayer](https://github.com/n-popescu/vcb-multiplayer) mod**. Anything that changes shared
+board or simulation state must be **mirrored to the other player** (riding the multiplayer mod's
+ENet peer, guarded so it no-ops when no session is live), so the two boards never drift. When
+adding a new improvement, sync its board/sim effects the same way (see `scripts/drag_override.gd`
+for the pattern) or make sure it only affects local, per-player view state.
 
 ## Install & run
 

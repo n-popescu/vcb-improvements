@@ -16,9 +16,14 @@ extends Node
 # after it, since we connect at runtime), so we only ADD the drag. Each latch is handled at most
 # once per drag, so lingering on one switch never re-toggles it.
 #
-# NOTE (multiplayer): the drag-added overrides are applied LOCALLY. In an MP session the peer
-# receives only the first click (the MP mod mirrors press/release, not pointer motion), so a swept
-# row can differ between peers until a re-sync. Intended for single-player.
+# MULTIPLAYER: this rides the Multiplayer mod's ENet peer (it never opens its own). The INITIAL
+# click is already mirrored by the MP mod (MPDrawSync -> Simulator.apply_remote_sim_click); we only
+# mirror the EXTRA latches the drag sweeps (and, in Press mode, their release), so both boards end
+# up with the same override_set and the deterministic engines stay in lockstep. Each swept override
+# carries the sender's interaction mode and is applied on the peer with THAT mode (adopting it
+# temporarily), matching how MP applies a remote click. Both players need this mod installed for
+# the drag to sync; with the MP mod absent it's simply local. Same lockstep tolerance as MP's own
+# in-sim clicks (each peer free-runs its deterministic engine).
 
 var _simulator: Node = null
 var _checkbox: Node = null
@@ -26,6 +31,7 @@ var _checkbox: Node = null
 var _drag_active := false
 var _visited := {}             # latch-key -> true : latches already handled this drag
 var _pressed_positions := []   # press-mode: positions we forced ON, to release on mouse-up
+var _applying_remote := false
 
 
 func _ready() -> void :
@@ -51,12 +57,19 @@ func _is_enabled() -> bool:
 
 
 func _ev_mi_mouse_input_on_board(_mode: int, _args: Dictionary) -> void :
+	if _applying_remote:
+		return
 	if not _is_enabled():
 		return
 	var sim = _simulator
 	if sim == null:
 		return
 	if not (sim.is_run and sim.is_engine_ready) or sim.TE == null:
+		return
+	# Don't act on input the Multiplayer mod is replaying from the network (edit-mode remote draws
+	# re-echo this event); the peer's sweeps arrive via _rpc_apply_drag_override instead.
+	var ed := _editor()
+	if ed != null and bool(ed.get("is_processing_remote_input")):
 		return
 	var pos: Vector2 = _args[E.mi_mouse_input_on_board.p_position]
 	var is_pressed: bool = _args[E.mi_mouse_input_on_board.p_is_pressed]
@@ -80,8 +93,8 @@ func _begin_drag(sim, pos: Vector2) -> void :
 	_drag_active = true
 	_visited.clear()
 	_pressed_positions.clear()
-	# The Simulator already applied the override for this first click; remember its latch so the
-	# sweep doesn't handle it again. Its release (press mode) is the Simulator's job too.
+	# The Simulator already applied the override for this first click (and the MP mod already
+	# mirrored it); remember its latch so the sweep doesn't handle it again.
 	var key: = _latch_key_at(sim, pos)
 	if key != "":
 		_visited[key] = true
@@ -95,9 +108,12 @@ func _sweep(sim, pos: Vector2) -> void :
 		return
 	_visited[key] = true
 	# Toggle mode: flips the latch. Press mode: forces it ON (the state arg matters only there).
+	var toggle_mode: bool = bool(sim.is_override_toggle_mode)
 	sim.set_mouse_override(pos, true)
-	if not sim.is_override_toggle_mode:
+	if not toggle_mode:
 		_pressed_positions.append(pos)
+	# Mirror this extra swept latch to the multiplayer peer (no-op when no live session).
+	_broadcast_override(pos, true, toggle_mode)
 
 
 func _end_drag(sim) -> void :
@@ -105,10 +121,11 @@ func _end_drag(sim) -> void :
 		return
 	_drag_active = false
 	# Press mode: release every EXTRA latch we forced on (the Simulator releases the first click's
-	# latch itself). Toggle mode needs no release.
-	if not sim.is_override_toggle_mode:
+	# latch itself, and the MP mod mirrors that release). Toggle mode needs no release.
+	if not bool(sim.is_override_toggle_mode):
 		for p in _pressed_positions:
 			sim.set_mouse_override(p, false)
+			_broadcast_override(p, false, false)
 	_visited.clear()
 	_pressed_positions.clear()
 
@@ -131,3 +148,51 @@ func _latch_key_at(sim, pos: Vector2) -> String:
 	if not sim.TE.is_entity_latch(x, y):
 		return ""
 	return str(x) + "," + str(y)
+
+
+# --- multiplayer ------------------------------------------------------------------------------
+func _editor() -> Node:
+	var main := get_tree().root.get_node_or_null("Main")
+	if main == null:
+		return null
+	var ed := main.get_node_or_null("Systems/Editor")
+	if ed == null:
+		ed = main.find_node("Editor", true, false)
+	return ed
+
+
+# True when a live multiplayer session exists (MP mod loaded, connected and in-game). Queried via
+# get_node_or_null / Object.get so this mod also works with the MP mod absent.
+func _live_session() -> bool:
+	var mp := get_tree().root.get_node_or_null("MP")
+	if mp == null:
+		return false
+	if get_tree().network_peer == null:
+		return false
+	return bool(mp.get("is_connected")) and bool(mp.get("is_game_started"))
+
+
+# Mirror one swept override to the peer(s), carrying our interaction mode so they apply it the same
+# way (see _rpc_apply_drag_override). No-op when there's no live session.
+func _broadcast_override(pos: Vector2, state: bool, toggle_mode: bool) -> void :
+	if not _live_session():
+		return
+	rpc("_rpc_apply_drag_override", int(pos.x), int(pos.y), state, toggle_mode)
+
+
+remote func _rpc_apply_drag_override(px: int, py: int, state: bool, toggle_mode: bool) -> void :
+	var sim = _simulator
+	if sim == null:
+		return
+	if not (sim.is_run and sim.is_engine_ready) or sim.TE == null:
+		return
+	var pos: = Vector2(px, py)
+	if not C.CIRCUIT.RECT.has_point(pos):
+		return
+	# Apply with the SENDER's interaction mode (adopt it temporarily), like MP's remote sim click.
+	_applying_remote = true
+	var saved: bool = bool(sim.is_override_toggle_mode)
+	sim.is_override_toggle_mode = toggle_mode
+	sim.set_mouse_override(pos, state)
+	sim.is_override_toggle_mode = saved
+	_applying_remote = false
