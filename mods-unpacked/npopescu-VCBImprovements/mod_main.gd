@@ -78,7 +78,7 @@ func _build(main: Node, simulator: Node, sim_bar: Node) -> void :
 				cb.title = "Drag Override"
 				if cb.has_node("Label"):
 					cb.get_node("Label").text = "Drag Override"
-				cb.hint_tooltip = "While simulating, click-drag across separate latches to toggle or press-and-hold each one the pointer sweeps over (per the mode above). Flip a whole row of switches in one drag."
+				cb.hint_tooltip = "While simulating, click-drag across separate latches\nto toggle or press-and-hold each one the pointer\nsweeps over (per the mode above).\nFlip a whole row of switches in one drag."
 				sim_vbox.add_child(cb)
 				sim_vbox.move_child(cb, sim_bar.get_index() + 1)
 				if driver != null and driver.has_method("set_checkbox"):
@@ -93,7 +93,7 @@ func _build(main: Node, simulator: Node, sim_bar: Node) -> void :
 				cb2.title = "Copy first state"
 				if cb2.has_node("Label"):
 					cb2.get_node("Label").text = "Copy first state"
-				cb2.hint_tooltip = "With Drag Override on (Toggle mode): copy the state of the first switch you flip onto every switch you drag across — drag from empty onto an OFF switch to turn it (and the rest) ON, or onto an ON switch to turn them all OFF. Switches already in that state are left alone."
+				cb2.hint_tooltip = "With Drag Override on (Toggle mode): copy the state\nof the first switch you flip onto every switch you\ndrag across — drag from empty onto an OFF switch to\nturn it (and the rest) ON, or onto an ON switch to\nturn them all OFF. Switches already in that state\nare left alone."
 				cb2.visible = false
 				sim_vbox.add_child(cb2)
 				sim_vbox.move_child(cb2, cb.get_index() + 1)
