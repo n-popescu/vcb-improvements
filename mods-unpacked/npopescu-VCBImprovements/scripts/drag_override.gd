@@ -27,11 +27,19 @@ extends Node
 
 var _simulator: Node = null
 var _checkbox: Node = null
+var _copy_checkbox: Node = null
 
 var _drag_active := false
 var _visited := {}             # latch-key -> true : latches already handled this drag
 var _pressed_positions := []   # press-mode: positions we forced ON, to release on mouse-up
 var _applying_remote := false
+
+# "Copy first state" sub-option: the resulting state of the first switch flipped this drag; every
+# other swept latch is set to match it (toggle-mode only).
+var _copy_target := false
+var _copy_target_set := false
+
+const _INVALID := Vector2(-1, -1)
 
 
 func _ready() -> void :
@@ -46,6 +54,26 @@ func set_simulator(p_simulator: Node) -> void :
 
 func set_checkbox(p_checkbox: Node) -> void :
 	_checkbox = p_checkbox
+	# Show/hide the "Copy first state" sub-option with the master Drag Override toggle.
+	if _checkbox != null and _checkbox.has_signal("toggled") \
+			and not _checkbox.is_connected("toggled", self, "_on_drag_override_toggled"):
+		var _e = _checkbox.connect("toggled", self, "_on_drag_override_toggled")
+	_refresh_copy_visibility()
+
+
+func set_copy_checkbox(p_checkbox: Node) -> void :
+	_copy_checkbox = p_checkbox
+	_refresh_copy_visibility()
+
+
+func _on_drag_override_toggled(_pressed: bool) -> void :
+	_refresh_copy_visibility()
+
+
+# The "Copy first state" checkbox is only meaningful while Drag Override itself is on.
+func _refresh_copy_visibility() -> void :
+	if _copy_checkbox != null:
+		_copy_checkbox.visible = _is_enabled()
 
 
 func _is_enabled() -> bool:
@@ -53,6 +81,14 @@ func _is_enabled() -> bool:
 		return false
 	if _checkbox.has_method("public_get_pressed"):
 		return _checkbox.public_get_pressed()
+	return false
+
+
+func _copy_enabled() -> bool:
+	if _copy_checkbox == null:
+		return false
+	if _copy_checkbox.has_method("public_get_pressed"):
+		return _copy_checkbox.public_get_pressed()
 	return false
 
 
@@ -93,27 +129,58 @@ func _begin_drag(sim, pos: Vector2) -> void :
 	_drag_active = true
 	_visited.clear()
 	_pressed_positions.clear()
+	_copy_target = false
+	_copy_target_set = false
 	# The Simulator already applied the override for this first click (and the MP mod already
 	# mirrored it); remember its latch so the sweep doesn't handle it again.
-	var key: = _latch_key_at(sim, pos)
-	if key != "":
-		_visited[key] = true
+	var e: = _latch_entity_at(sim, pos)
+	if e != _INVALID:
+		_visited[_entity_key(e)] = true
+		# In "Copy first state" (toggle mode), clicking directly on a switch IS the first flip:
+		# adopt its resulting state as the target. The Simulator just queued the toggle, so the
+		# entity flips to `not current` on the next solve — that's the target.
+		if _copy_enabled() and bool(sim.is_override_toggle_mode):
+			_copy_target = not bool(sim.TE.get_entity_state(int(e.x), int(e.y)))
+			_copy_target_set = true
 
 
 func _sweep(sim, pos: Vector2) -> void :
-	var key: = _latch_key_at(sim, pos)
-	if key == "":
+	var e: = _latch_entity_at(sim, pos)
+	if e == _INVALID:
 		return
+	var key: = _entity_key(e)
 	if _visited.has(key):
 		return
 	_visited[key] = true
-	# Toggle mode: flips the latch. Press mode: forces it ON (the state arg matters only there).
 	var toggle_mode: bool = bool(sim.is_override_toggle_mode)
+	# "Copy first state" only reshapes Toggle mode (Press already forces a single ON state).
+	if _copy_enabled() and toggle_mode:
+		_sweep_copy(sim, pos, e)
+		return
+	# Default: toggle the latch (or, in Press mode, force it ON — the state arg matters only there).
 	sim.set_mouse_override(pos, true)
 	if not toggle_mode:
 		_pressed_positions.append(pos)
 	# Mirror this extra swept latch to the multiplayer peer (no-op when no live session).
 	_broadcast_override(pos, true, toggle_mode)
+
+
+# "Copy first state": the first switch flipped this drag sets the target state; every other swept
+# latch is made to match it (only flipped when it differs). Mirrored to the peer as a force-to-
+# target (Press-style) override so both boards land on the target even under a small tick skew.
+func _sweep_copy(sim, pos: Vector2, e: Vector2) -> void :
+	var cur: bool = bool(sim.TE.get_entity_state(int(e.x), int(e.y)))
+	if not _copy_target_set:
+		# First flipped switch (the click landed off a switch): toggle it, adopt its new state.
+		sim.set_mouse_override(pos, true)
+		_copy_target = not cur
+		_copy_target_set = true
+		_broadcast_override(pos, _copy_target, false)
+	elif cur != _copy_target:
+		# Differs from the target → toggle it so it matches (toggle mode flips to `not cur`).
+		sim.set_mouse_override(pos, true)
+		_broadcast_override(pos, _copy_target, false)
+	# else: already at the target state → leave it untouched (nothing to mirror).
 
 
 func _end_drag(sim) -> void :
@@ -130,24 +197,28 @@ func _end_drag(sim) -> void :
 	_pressed_positions.clear()
 
 
-# The identity ("x,y" in the sim entity list) of the latch under a board position, or "" if the
-# position is off-board, empty, or not a latch. Mirrors Simulator.set_mouse_override's lookup.
-func _latch_key_at(sim, pos: Vector2) -> String:
+# The entity coords (x,y in the sim entity list) of the latch under a board position, or _INVALID
+# if the position is off-board, empty, or not a latch. Mirrors Simulator.set_mouse_override's lookup.
+func _latch_entity_at(sim, pos: Vector2) -> Vector2:
 	if not C.CIRCUIT.RECT.has_point(pos):
-		return ""
+		return _INVALID
 	var die: Image = sim.texture_die
 	if die == null:
-		return ""
+		return _INVALID
 	die.lock()
 	var px: Color = die.get_pixelv(pos)
 	die.unlock()
 	if px.to_html() == "ffffffff":
-		return ""
+		return _INVALID
 	var x: int = px.r8 + (px.g8 * 256)
 	var y: int = px.b8 + (px.a8 * 256)
 	if not sim.TE.is_entity_latch(x, y):
-		return ""
-	return str(x) + "," + str(y)
+		return _INVALID
+	return Vector2(x, y)
+
+
+func _entity_key(e: Vector2) -> String:
+	return str(int(e.x)) + "," + str(int(e.y))
 
 
 # --- multiplayer ------------------------------------------------------------------------------

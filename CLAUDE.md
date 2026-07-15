@@ -27,6 +27,15 @@ pointer sweeps over**, not just the first click. Toggle mode → each swept latc
 Press mode → each is forced ON while held, released on mouse-up. A checkbox under the
 Toggle/Press buttons in the simulation panel turns it on.
 
+A **"Copy first state"** sub-option (a second checkbox, shown only while Drag Override is on, and
+only meaningful in **Toggle** mode) makes the drag *copy the state of the first switch you flip*
+onto every latch it reaches instead of toggling each independently: the first flipped switch sets a
+`_copy_target` (its resulting state), then each subsequent swept latch is flipped **only if it
+differs** from the target (`TE.get_entity_state` comparison), so a whole bank ends up uniform and
+already-matching switches are never flipped back. The first flip is either the clicked latch (its
+target is read in `_begin_drag` as `not get_entity_state`, since the Simulator has already queued
+the toggle) or, if the click landed off a switch, the first latch the sweep reaches.
+
 How it works, and why it's built this way:
 - **The engine's own override is reused.** `Simulator` (`res://src/main/simulator.gd`, node
   `Main/Systems/Simulator`) exposes `set_mouse_override(pos, state)`, `is_override_toggle_mode`,
@@ -54,12 +63,17 @@ How it works, and why it's built this way:
   `SimulatorBar2` (the Toggle/Press bar). That panel (`SimulationCard`) is `show()`/`hide()`-d by
   `circuit_editor.gd` for sim/edit, so the checkbox is **sim-only** and keeps its state across
   sim stop/restart because its node is never rebuilt. Read its state with `public_get_pressed()`.
+  The **"Copy first state"** checkbox (`BtnDragOverrideCopy`) sits right beneath it; the driver
+  connects the master checkbox's `toggled` signal and shows/hides the sub-option with it
+  (`_refresh_copy_visibility`).
 
 **Multiplayer:** the sweep is mirrored to the peer so both boards stay in lockstep. The INITIAL
-click is already synced by the MP mod (`MPDrawSync` → `Simulator.apply_remote_sim_click`); this mod
-only mirrors the EXTRA swept latches (and, in press mode, their release) via its own `remote func
+click is already synced by the MP mod (`MPDrawSync` → `Simulator.apply_remote_sim_click`); this mod only mirrors the EXTRA swept latches (and, in press mode, their release) via its own `remote func
 _rpc_apply_drag_override` riding the MP ENet peer, applying each on the peer with the SENDER's
-interaction mode (adopted temporarily, like `apply_remote_sim_click`). All broadcasts are gated on
+interaction mode (adopted temporarily, like `apply_remote_sim_click`). In **Copy first state** each
+mirrored latch is sent as a **force-to-target** (`toggle_mode = false`, `state = _copy_target`) so
+the peer *sets* it to the target rather than toggling — both boards land on the same state, and it's
+a touch more skew-robust than a bare toggle. All broadcasts are gated on
 `_live_session()` (MP autoload + `network_peer` + `is_connected` + `is_game_started`, via
 `get_node_or_null`/`Object.get`), so with the MP mod absent it's simply local. Both players need
 this mod. Same lockstep tolerance as MP's own in-sim clicks (a toggle depends on the current entity

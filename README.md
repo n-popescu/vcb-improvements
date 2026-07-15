@@ -29,15 +29,24 @@ latch the pointer sweeps over**:
 Each latch is handled at most once per drag, so lingering on one switch never re-toggles it. It
 works with any latch layout — the switches don't need to be connected.
 
+**Copy first state** (a sub-option that appears under *Drag Override* when it's on, Toggle mode):
+instead of toggling each switch independently, it **copies the state of the first switch you flip**
+onto every latch the drag reaches. Drag from an empty spot onto an **OFF** switch and the whole
+sweep turns **ON**; start on an **ON** switch and the sweep turns everything **OFF**. Switches that
+already match are left alone (never flipped back). Handy for setting a whole bank of switches to one
+value regardless of where each started.
+
 **How to use:** start the simulation. In the right-hand simulation panel, under the
-**Toggle / Press** buttons ("Mouse Interaction Mode"), tick **Drag Override**. Then click and drag
-across your switches. The checkbox is **only available while simulating**, and it **keeps its
-state** when you stop and restart the simulation.
+**Toggle / Press** buttons ("Mouse Interaction Mode"), tick **Drag Override** (and optionally
+**Copy first state** just beneath it). Then click and drag across your switches. The checkboxes are
+**only available while simulating**, and they **keep their state** when you stop and restart the
+simulation.
 
 > **Multiplayer:** this is fully synced. In a [VCB Multiplayer](https://github.com/n-popescu/vcb-multiplayer)
-> session the swept overrides are mirrored to the other player (carrying your interaction mode), so
-> both boards stay in lockstep — just like a normal in-sim click. Both players need this mod
-> installed; with the multiplayer mod absent it simply works locally.
+> session the swept overrides are mirrored to the other player (carrying your interaction mode; in
+> *Copy first state* each swept latch is mirrored as a force-to-target so both boards land on the
+> same state), so both boards stay in lockstep — just like a normal in-sim click. Both players need
+> this mod installed; with the multiplayer mod absent it simply works locally.
 
 ## Compatibility with the Multiplayer mod
 
