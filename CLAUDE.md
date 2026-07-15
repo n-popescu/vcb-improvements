@@ -55,12 +55,18 @@ How it works, and why it's built this way:
   `circuit_editor.gd` for sim/edit, so the checkbox is **sim-only** and keeps its state across
   sim stop/restart because its node is never rebuilt. Read its state with `public_get_pressed()`.
 
-**Known limitation (multiplayer):** the drag-added overrides are applied **locally**. The MP mod
-mirrors only press/release (`_rpc_apply_sim_click`), not pointer motion, so a swept row can differ
-between peers until a re-sync. If MP-syncing the sweep is ever wanted, MPDrawSync would need to
-broadcast the motion overrides too (out of scope here; the MP mod owns sim-click sync).
+**Multiplayer:** the sweep is mirrored to the peer so both boards stay in lockstep. The INITIAL
+click is already synced by the MP mod (`MPDrawSync` → `Simulator.apply_remote_sim_click`); this mod
+only mirrors the EXTRA swept latches (and, in press mode, their release) via its own `remote func
+_rpc_apply_drag_override` riding the MP ENet peer, applying each on the peer with the SENDER's
+interaction mode (adopted temporarily, like `apply_remote_sim_click`). All broadcasts are gated on
+`_live_session()` (MP autoload + `network_peer` + `is_connected` + `is_game_started`, via
+`get_node_or_null`/`Object.get`), so with the MP mod absent it's simply local. Both players need
+this mod. Same lockstep tolerance as MP's own in-sim clicks (a toggle depends on the current entity
+state, so a large tick skew could in theory flip differently — no worse than a vanilla mirrored
+click).
 
-## 2. Coexistence rule
+## 2. Coexistence + multiplayer-compatibility rule
 
 Prefer **standalone nodes + events/queries** over `install_script_extension`. If an improvement
 *must* extend a game script, first check it isn't one the Multiplayer or Board Size mods already
@@ -69,6 +75,16 @@ extend (MP extends: `editor.gd`, `history.gd`, `simulator.gd`, `simulation_contr
 `button_*` / `*_label` GUI scripts; Board Size extends: `circuit_renderer.gd`,
 `tool_array_pencil_eraser.gd`, `file_system.gd`). GML *does* allow stacking multiple extensions of
 one script, but avoiding overlap keeps things clash-free by construction.
+
+**Every improvement MUST be compatible with the [VCB Multiplayer](https://github.com/n-popescu/vcb-multiplayer)
+mod.** Concretely: anything that mutates **shared board or simulation state** (pixels, latches,
+overrides, undo, selection…) must be **mirrored to the peer** so both boards stay in lockstep — ride
+the MP mod's ENet peer with a `remote func`, guarded by a `_live_session()` check so it no-ops when
+no session is live, and carry any per-player mode with the payload (apply it on the peer, don't
+force the peer's own setting). Per-player *view* state (cursor, camera, a UI toggle's own value)
+must NOT be broadcast. Improvement #1's `drag_override.gd` is the reference pattern
+(`_broadcast_override` / `_rpc_apply_drag_override`, mirroring only the extra swept latches on top
+of the click the MP mod already syncs). Never let a feature desync the two boards.
 
 ## 3. Engine / GDScript constraints
 
@@ -106,5 +122,7 @@ landing on `main` auto-cuts a Release.
 - Open PRs against `main`; squash-merge. **One PR per change** (don't open duplicate branches).
 - Changes are unverified in-engine; give a test recipe in the PR (start sim, tick **Drag
   Override** under Toggle/Press, drag across a row of switches in both modes; confirm the checkbox
-  is hidden in edit mode and keeps its state across sim restart).
+  is hidden in edit mode and keeps its state across sim restart). **Multiplayer:** with the MP mod
+  on Host + Join, enter simulation and drag across switches on one — the same latches must change
+  on the other board (both modes), in lockstep.
 ```
